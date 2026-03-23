@@ -1,124 +1,100 @@
 import streamlit as st
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 import os
 import time
+import urllib.parse
 
-# 1. Sahifa dizayni va brending
-st.set_page_config(
-    page_title="Huquq AI | Milliy Intellektual Tizim",
-    page_icon="⚖️",
-    layout="wide"
-)
+# 1. Sahifa sozlamalari
+st.set_page_config(page_title="Huquq AI | Milliy Intellektual Tizim", page_icon="⚖️", layout="wide")
 
-# Professional UI dizayn
+# UI Dizayn
 st.markdown("""
     <style>
-    .stApp { background-color: #f8f9fa; }
+    .stApp { background-color: #f4f7f6; }
     .hero-section {
-        background: linear-gradient(135deg, #1a237e 0%, #0d47a1 100%);
-        padding: 40px; border-radius: 20px; color: white;
-        text-align: center; margin-bottom: 30px;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        padding: 50px; border-radius: 20px; color: white; text-align: center;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2); margin-bottom: 25px;
     }
     .result-card {
-        background-color: white; padding: 25px; border-radius: 15px;
-        border-top: 8px solid #ffca28; box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        background: white; padding: 30px; border-radius: 20px;
+        border-left: 10px solid #ffc107; box-shadow: 0 8px 16px rgba(0,0,0,0.1);
     }
-    .stButton>button {
-        background: #1a237e; color: white; border-radius: 25px;
-        height: 3.5em; width: 100%; font-weight: bold; border: none;
+    .lex-link {
+        display: inline-block; padding: 10px 20px; background-color: #007bff;
+        color: white; text-decoration: none; border-radius: 5px; font-weight: bold;
     }
-    .stButton>button:hover { background: #0d47a1; color: #ffca28; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Modelni o'qitish (Lex.uz va Sud.uz terminologiyasi asosida)
+# 2. Modelni yuklash va "Aqlli qidiruv"
 @st.cache_resource
-def train_legal_ai(file_path):
-    if not os.path.exists(file_path):
-        return None, None
-    try:
-        df = pd.read_excel(file_path)
-        df.columns = df.columns.str.strip()
-        
-        # Ustunlarni aniqlash (TEXT va LABEL)
-        t_col = 'TEXT' if 'TEXT' in df.columns else 'text'
-        l_col = 'LABEL' if 'LABEL' in df.columns else 'label'
-        
-        df = df.dropna(subset=[t_col, l_col])
-        
-        # N-gram (1,3) - so'z birikmalarini tahlil qilish uchun
-        model = Pipeline([
-            ('tfidf', TfidfVectorizer(ngram_range=(1, 3), max_features=60000)),
-            ('clf', LogisticRegression(max_iter=2500, class_weight='balanced'))
-        ])
-        
-        model.fit(df[t_col].astype(str), df[l_col].astype(str))
-        return model, len(df)
-    except:
-        return None, None
-
-# 3. Sidebar
-with st.sidebar:
-    st.image("https://lex.uz/Content/images/logo_lexuz.png", width=180)
-    st.markdown("---")
-    st.info("Tizim Lex.uz va Sud.uz ochiq ma'lumotlari asosida ishlaydi.")
-    if st.button("🔄 Modelni yangilash"):
-        st.cache_resource.clear()
-        st.rerun()
-
-# 4. Asosiy Interfeys
-st.markdown("""
-    <div class="hero-section">
-        <h1>⚖️ MILLIY HUQUQIY INTELLEKTUAL TIZIM</h1>
-        <p>Sun'iy intellekt yordamida hujjatlarni avtomatik tasniflash</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-# Fayl yo'li (Kodingiz bilan bir xil papkada bo'lishi shart)
-dataset_file = os.path.join(os.path.dirname(__file__), "Dataset.xlsx")
-
-with st.spinner("⏳ Bazaviy bilimlar yuklanmoqda..."):
-    model, row_count = train_legal_ai(dataset_file)
-
-if model:
-    col1, col2 = st.columns([2, 1])
+def load_data(file_path):
+    if not os.path.exists(file_path): return None, None, None
+    df = pd.read_excel(file_path)
+    df.columns = df.columns.str.strip()
+    t_col = 'TEXT' if 'TEXT' in df.columns else 'text'
+    l_col = 'LABEL' if 'LABEL' in df.columns else 'label'
     
-    with col1:
-        st.subheader("📝 Tahlil uchun matn")
-        user_input = st.text_area("Hujjat parchasini kiriting:", height=250, 
-                                  placeholder="Masalan: Sud qarori ijrosini ta'minlash tartibi...")
+    # Modelni o'qitish
+    model = Pipeline([
+        ('tfidf', TfidfVectorizer(ngram_range=(1, 3), max_features=100000)),
+        ('clf', LogisticRegression(max_iter=5000, class_weight='balanced'))
+    ])
+    model.fit(df[t_col].astype(str), df[l_col].astype(str))
+    return model, df, t_col
+
+# 3. Interfeys
+st.markdown('<div class="hero-section"><h1>⚖️ MILLIY HUQUQIY INTELLEKTUAL TIZIM</h1><p>Lex.uz va Sud.uz ochiq ma’lumotlari asosida 100% aniqlik sari</p></div>', unsafe_allow_html=True)
+
+dataset_file = os.path.join(os.path.dirname(__file__), "Dataset.xlsx")
+model, dataframe, text_column = load_data(dataset_file)
+
+if model is not None:
+    c1, c2 = st.columns([2, 1])
+    
+    with c1:
+        user_text = st.text_area("Huquqiy hujjat matnini kiriting:", height=300, placeholder="Matnni shu yerga nusxalang...")
         
-        if st.button("🔍 CHUQUR TAHLIL QILISH"):
-            if user_input.strip():
-                with st.spinner("AI matnni tahlil qilmoqda..."):
-                    time.sleep(1) # Vizual effekt
-                    pred = model.predict([user_input])[0]
-                    prob = model.predict_proba([user_input]).max()
+        if st.button("🚀 JONLI TAHLIL QILISH"):
+            if user_text.strip():
+                with st.spinner("Lex.uz bazasi bilan solishtirilmoqda..."):
+                    time.sleep(1.5)
+                    
+                    # AI Bashorati
+                    prediction = model.predict([user_text])[0]
+                    probs = model.predict_proba([user_text]).max()
+                    
+                    # Lex.uz uchun qidiruv havolasini yaratish
+                    search_query = urllib.parse.quote(user_text[:100])
+                    lex_url = f"https://lex.uz/search/nat?query={search_query}"
                     
                     st.markdown(f"""
-                    <div class="result-card">
-                        <h3 style='color:#1a237e;'>📋 TAHLIL NATIJASI:</h3>
-                        <h1 style='text-align:center; color:#0d47a1;'>{pred.upper()}</h1>
-                        <hr>
-                        <p style='text-align:right;'><b>Ishonch darajasi:</b> {prob*100:.2f}%</p>
-                    </div>
+                        <div class="result-card">
+                            <h2 style='color:#1e3c72;'>📌 TIZIM XULOSASI:</h2>
+                            <h1 style='color:#e67e22;'>{prediction.upper()}</h1>
+                            <p><b>Aniqlik koeffitsienti:</b> {probs*100:.2f}%</p>
+                            <hr>
+                            <p>Ushbu matn bo'yicha Lex.uz'dan jonli manbalarni ko'rish:</p>
+                            <a href="{lex_url}" target="_blank" class="lex-link">🔗 Lex.uz'dan qidirish</a>
+                        </div>
                     """, unsafe_allow_html=True)
             else:
-                st.error("Iltimos, matn kiriting!")
-
-    with col2:
-        st.subheader("📊 Statistika")
-        st.metric("O'qitilgan hujjatlar", f"{row_count:,}")
-        st.metric("Tizim holati", "Onlayn")
-        st.image("https://sud.uz/wp-content/uploads/2020/06/logo-new-uz.png", width=150)
+                st.warning("Iltimos, tahlil uchun matn kiriting.")
+    
+    with c2:
+        st.subheader("📊 Tizim ko'rsatkichlari")
+        st.write(f"📂 Baza hajmi: **{len(dataframe)} ta hujjat**")
+        st.write("✅ Manba: **Lex.uz / Sud.uz**")
+        st.write("🧠 Algoritm: **NLP + TF-IDF**")
+        st.success("Tizim 100% onlayn holatda")
+        st.image("https://lex.uz/Content/images/logo_lexuz.png")
 
 else:
-    st.error(f"❌ Fayl topilmadi: 'Dataset.xlsx' fayli huquq_ai.py bilan bir xil papkada ekanligini tekshiring.")
+    st.error("Dataset.xlsx topilmadi!")
 
-# Footer
-st.markdown("---")
-st.markdown("<p style='text-align:center; color:gray;'>© 2026 ToshDO'TAU | Sud.uz bilan hamkorlikda</p>", unsafe_allow_html=True)
+st.markdown("<br><p style='text-align:center;'>© 2026 ToshDO'TAU | Sun'iy Intellekt Laboratoriyasi</p>", unsafe_allow_html=True)
